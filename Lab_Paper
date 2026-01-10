@@ -1,0 +1,469 @@
+#include <iostream>
+using namespace std;
+
+struct Player {
+    int rating;
+    string name;
+    int hp;
+    Player* left;
+    Player* right;
+    int height;
+    
+    Player(int r, string n, int h) : rating(r), name(n), hp(h), left(nullptr), right(nullptr), height(1) {}
+};
+
+class Arena {
+private:
+    Player* root;
+    
+    int height(Player* node) {
+        if (!node) return 0;
+        return node->height;
+    }
+    
+    int max(int a, int b) {
+        return (a > b) ? a : b;
+    }
+    
+    Player* rotateRight(Player* y) {
+        Player* x = y->left;
+        y->left = x->right;
+        x->right = y;
+        y->height = max(height(y->left), height(y->right)) + 1;
+        x->height = max(height(x->left), height(x->right)) + 1;
+        return x;
+    }
+    
+    Player* rotateLeft(Player* x) {
+        Player* y = x->right;
+        x->right = y->left;
+        y->left = x;
+        x->height = max(height(x->left), height(x->right)) + 1;
+        y->height = max(height(y->left), height(y->right)) + 1;
+        return y;
+    }
+    
+    int getBalance(Player* node) {
+        if (!node) return 0;
+        return height(node->left) - height(node->right);
+    }
+    
+    Player* insert(Player* node, int rating, string name, int hp, bool& duplicate) {
+        if (!node) return new Player(rating, name, hp);
+        
+        if (rating < node->rating)
+            node->left = insert(node->left, rating, name, hp, duplicate);
+        else if (rating > node->rating)
+            node->right = insert(node->right, rating, name, hp, duplicate);
+        else {
+            duplicate = true;
+            return node;
+        }
+        
+        node->height = 1 + max(height(node->left), height(node->right));
+        int balance = getBalance(node);
+        
+        if (balance > 1 && rating < node->left->rating)
+            return rotateRight(node);
+        if (balance < -1 && rating > node->right->rating)
+            return rotateLeft(node);
+        if (balance > 1 && rating > node->left->rating) {
+            node->left = rotateLeft(node->left);
+            return rotateRight(node);
+        }
+        if (balance < -1 && rating < node->right->rating) {
+            node->right = rotateRight(node->right);
+            return rotateLeft(node);
+        }
+        
+        return node;
+    }
+    
+    Player* minValueNode(Player* node) {
+        Player* current = node;
+        while (current->left) current = current->left;
+        return current;
+    }
+    
+    Player* deleteNode(Player* node, int rating, bool& found) {
+        if (!node) {
+            found = false;
+            return node;
+        }
+        
+        if (rating < node->rating)
+            node->left = deleteNode(node->left, rating, found);
+        else if (rating > node->rating)
+            node->right = deleteNode(node->right, rating, found);
+        else {
+            found = true;
+            if (!node->left || !node->right) {
+                Player* temp = node->left ? node->left : node->right;
+                if (!temp) {
+                    delete node;
+                    return nullptr;
+                } else {
+                    *node = *temp;
+                    delete temp;
+                }
+            } else {
+                Player* temp = minValueNode(node->right);
+                node->rating = temp->rating;
+                node->name = temp->name;
+                node->hp = temp->hp;
+                node->right = deleteNode(node->right, temp->rating, found);
+            }
+        }
+        
+        if (!node) return node;
+        
+        node->height = 1 + max(height(node->left), height(node->right));
+        int balance = getBalance(node);
+        
+        if (balance > 1 && getBalance(node->left) >= 0)
+            return rotateRight(node);
+        if (balance > 1 && getBalance(node->left) < 0) {
+            node->left = rotateLeft(node->left);
+            return rotateRight(node);
+        }
+        if (balance < -1 && getBalance(node->right) <= 0)
+            return rotateLeft(node);
+        if (balance < -1 && getBalance(node->right) > 0) {
+            node->right = rotateRight(node->right);
+            return rotateLeft(node);
+        }
+        
+        return node;
+    }
+    
+    Player* search(Player* node, int rating) {
+        if (!node || node->rating == rating) return node;
+        if (rating < node->rating) return search(node->left, rating);
+        return search(node->right, rating);
+    }
+    
+    Player* findPrev(int rating) {
+        Player* prev = nullptr;
+        Player* curr = root;
+        while (curr) {
+            if (curr->rating < rating) {
+                prev = curr;
+                curr = curr->right;
+            } else {
+                curr = curr->left;
+            }
+        }
+        return prev;
+    }
+    
+    Player* findNext(int rating) {
+        Player* next = nullptr;
+        Player* curr = root;
+        while (curr) {
+            if (curr->rating > rating) {
+                next = curr;
+                curr = curr->left;
+            } else {
+                curr = curr->right;
+            }
+        }
+        return next;
+    }
+    
+    void rangeQuery(Player* node, int L, int R) {
+        if (!node) return;
+        if (L < node->rating) rangeQuery(node->left, L, R);
+        if (L <= node->rating && node->rating <= R)
+            cout << node->rating << " " << node->name << " " << node->hp << "\n";
+        if (R > node->rating) rangeQuery(node->right, L, R);
+    }
+    
+    int countLessThan(Player* node, int X) {
+        if (!node) return 0;
+        if (X <= node->rating) return countLessThan(node->left, X);
+        return 1 + countLessThan(node->left, X) + countLessThan(node->right, X);
+    }
+    
+    void inOrder(Player* node, Player** players, int& index) {
+        if (!node) return;
+        inOrder(node->left, players, index);
+        players[index++] = node;
+        inOrder(node->right, players, index);
+    }
+    
+    Player* kthPlayer(int k) {
+        int n = countPlayers(root);
+        if (k < 1 || k > n) return nullptr;
+        
+        Player** players = new Player*[n];
+        int index = 0;
+        inOrder(root, players, index);
+        Player* result = players[k-1];
+        delete[] players;
+        return result;
+    }
+    
+    bool findPath(Player* node, int rating, Player** path, int& pathLen) {
+        if (!node) return false;
+        path[pathLen++] = node;
+        if (node->rating == rating) return true;
+        if ((rating < node->rating && findPath(node->left, rating, path, pathLen)) ||
+            (rating > node->rating && findPath(node->right, rating, path, pathLen)))
+            return true;
+        pathLen--;
+        return false;
+    }
+    
+    Player* findMin() {
+        Player* node = root;
+        while (node && node->left) node = node->left;
+        return node;
+    }
+    
+    Player* findMax() {
+        Player* node = root;
+        while (node && node->right) node = node->right;
+        return node;
+    }
+    
+    int treeHeight(Player* node) {
+        if (!node) return -1;
+        int leftHeight = treeHeight(node->left);
+        int rightHeight = treeHeight(node->right);
+        return max(leftHeight, rightHeight) + 1;
+    }
+    
+    int countLeaves(Player* node) {
+        if (!node) return 0;
+        if (!node->left && !node->right) return 1;
+        return countLeaves(node->left) + countLeaves(node->right);
+    }
+    
+    int countPlayers(Player* node) {
+        if (!node) return 0;
+        return 1 + countPlayers(node->left) + countPlayers(node->right);
+    }
+
+public:
+    Arena() : root(nullptr) {}
+    
+    void JOIN(int rating, string name, int hp) {
+        bool duplicate = false;
+        root = insert(root, rating, name, hp, duplicate);
+        cout << (duplicate ? "DUPLICATE" : "JOINED") << "\n";
+    }
+    
+    void LEAVE(int rating) {
+        bool found = false;
+        root = deleteNode(root, rating, found);
+        cout << (found ? "LEFT" : "NOT FOUND") << "\n";
+    }
+    
+    void STATUS(int rating) {
+        Player* player = search(root, rating);
+        if (!player) cout << "NOT FOUND\n";
+        else cout << player->rating << " " << player->name << " " << player->hp << "\n";
+    }
+    
+    void DAMAGE(int rating, int amount) {
+        Player* player = search(root, rating);
+        if (!player) cout << "NOT FOUND\n";
+        else {
+            player->hp = max(0, player->hp - amount);
+            cout << "DAMAGED " << player->hp << "\n";
+        }
+    }
+    
+    void HEAL(int rating, int amount) {
+        Player* player = search(root, rating);
+        if (!player) cout << "NOT FOUND\n";
+        else {
+            player->hp += amount;
+            cout << "HEALED " << player->hp << "\n";
+        }
+    }
+    
+    void MATCH(int X) {
+        if (!root) {
+            cout << "EMPTY\n";
+            return;
+        }
+        Player* P = findPrev(X);
+        Player* S = findNext(X);
+        
+        if (!P && !S) cout << "EMPTY\n";
+        else if (!P) cout << S->rating << " " << S->name << " " << S->hp << "\n";
+        else if (!S) cout << P->rating << " " << P->name << " " << P->hp << "\n";
+        else {
+            int distP = X - P->rating;
+            int distS = S->rating - X;
+            if (distP < distS || (distP == distS && P->rating < S->rating))
+                cout << P->rating << " " << P->name << " " << P->hp << "\n";
+            else
+                cout << S->rating << " " << S->name << " " << S->hp << "\n";
+        }
+    }
+    
+    void NEXT(int X) {
+        Player* next = findNext(X);
+        if (!next) cout << "NONE\n";
+        else cout << next->rating << " " << next->name << " " << next->hp << "\n";
+    }
+    
+    void PREV(int X) {
+        Player* prev = findPrev(X);
+        if (!prev) cout << "NONE\n";
+        else cout << prev->rating << " " << prev->name << " " << prev->hp << "\n";
+    }
+    
+    void RANGE(int L, int R) {
+        if (L > R) {
+            cout << "EMPTY\n";
+            return;
+        }
+        bool found = false;
+        Player* curr = root;
+        while (curr) {
+            if (curr->rating >= L && curr->rating <= R) {
+                found = true;
+                break;
+            }
+            curr = curr->rating < L ? curr->right : curr->left;
+        }
+        if (!found) cout << "EMPTY\n";
+        else rangeQuery(root, L, R);
+    }
+    
+    void RANK(int X) {
+        cout << countLessThan(root, X) << "\n";
+    }
+    
+    void KTH(int k) {
+        Player* player = kthPlayer(k);
+        if (!player) cout << "OUT OF RANGE\n";
+        else cout << player->rating << " " << player->name << " " << player->hp << "\n";
+    }
+    
+    void DUEL(int A, int B) {
+        int maxSize = countPlayers(root);
+        Player** pathA = new Player*[maxSize];
+        Player** pathB = new Player*[maxSize];
+        int lenA = 0, lenB = 0;
+        
+        bool foundA = findPath(root, A, pathA, lenA);
+        bool foundB = findPath(root, B, pathB, lenB);
+        
+        if (!foundA || !foundB) {
+            cout << "NOT FOUND\n";
+            delete[] pathA;
+            delete[] pathB;
+            return;
+        }
+        
+        int i = 0;
+        while (i < lenA && i < lenB && pathA[i] == pathB[i]) i++;
+        cout << "DIST " << (lenA - i + lenB - i) << "\n";
+        
+        delete[] pathA;
+        delete[] pathB;
+    }
+    
+    void STATS() {
+        int n = countPlayers(root);
+        cout << "PLAYERS " << n << "\n";
+        if (n == 0) {
+            cout << "MIN NONE\n";
+            cout << "MAX NONE\n";
+            cout << "HEIGHT -1\n";
+            cout << "LEAVES 0\n";
+        } else {
+            Player* minP = findMin();
+            Player* maxP = findMax();
+            cout << "MIN " << minP->rating << "\n";
+            cout << "MAX " << maxP->rating << "\n";
+            cout << "HEIGHT " << treeHeight(root) << "\n";
+            cout << "LEAVES " << countLeaves(root) << "\n";
+        }
+    }
+};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    
+    Arena arena;
+    int Q;
+    cin >> Q;
+    
+    for (int i = 0; i < Q; i++) {
+        string command;
+        cin >> command;
+        
+        if (command == "JOIN") {
+            int rating, hp;
+            string name;
+            cin >> rating >> name >> hp;
+            arena.JOIN(rating, name, hp);
+        }
+        else if (command == "LEAVE") {
+            int rating;
+            cin >> rating;
+            arena.LEAVE(rating);
+        }
+        else if (command == "STATUS") {
+            int rating;
+            cin >> rating;
+            arena.STATUS(rating);
+        }
+        else if (command == "DAMAGE") {
+            int rating, amount;
+            cin >> rating >> amount;
+            arena.DAMAGE(rating, amount);
+        }
+        else if (command == "HEAL") {
+            int rating, amount;
+            cin >> rating >> amount;
+            arena.HEAL(rating, amount);
+        }
+        else if (command == "MATCH") {
+            int X;
+            cin >> X;
+            arena.MATCH(X);
+        }
+        else if (command == "NEXT") {
+            int X;
+            cin >> X;
+            arena.NEXT(X);
+        }
+        else if (command == "PREV") {
+            int X;
+            cin >> X;
+            arena.PREV(X);
+        }
+        else if (command == "RANGE") {
+            int L, R;
+            cin >> L >> R;
+            arena.RANGE(L, R);
+        }
+        else if (command == "RANK") {
+            int X;
+            cin >> X;
+            arena.RANK(X);
+        }
+        else if (command == "KTH") {
+            int k;
+            cin >> k;
+            arena.KTH(k);
+        }
+        else if (command == "DUEL") {
+            int A, B;
+            cin >> A >> B;
+            arena.DUEL(A, B);
+        }
+        else if (command == "STATS") {
+            arena.STATS();
+        }
+    }
+    
+    return 0;
+}
